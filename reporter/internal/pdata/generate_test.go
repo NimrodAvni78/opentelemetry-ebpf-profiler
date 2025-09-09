@@ -251,6 +251,27 @@ func singleFrameTrace(ty libpf.FrameType, mappingFile libpf.FrameMappingFile,
 	return frames
 }
 
+func findAttribute(t *testing.T, profiles pprofile.Profiles, k, v string) {
+	foundKey := false
+	foundValue := false
+
+	for _, attr := range profiles.ProfilesDictionary().AttributeTable().All() {
+		key := attr.Key()
+		value := attr.Value()
+		// Check if this is an environment variable attribute
+		if key == k {
+			foundKey = true
+			if value.Type() == pcommon.ValueTypeStr && value.Str() == v {
+				foundValue = true
+			}
+		}
+	}
+	assert.True(t, foundKey,
+		"Attribute '"+k+"' should be in the attribute table")
+	assert.True(t, foundValue,
+		"Environment variable value '"+v+"' should be in the attribute table")
+}
+
 func TestGenerate_SingleContainerSingleOrigin(t *testing.T) {
 	d, err := New(100, nil)
 	require.NoError(t, err)
@@ -275,7 +296,7 @@ func TestGenerate_SingleContainerSingleOrigin(t *testing.T) {
 				Frames: singleFrameTrace(libpf.GoFrame, mappingFile,
 					0x10, funcName, filePath, 42),
 				Timestamps: []uint64{100},
-				EnvVars:    map[string]string{"FOO": "BAR"},
+				EnvVars:    map[string]string{"FOO": "BAR", "OTEL_SERVICE_NAME": "service-name", "OTEL_RESOURCE_ATTRIBUTES": "attr1=val1,attr2=val2"},
 			},
 		},
 	}
@@ -301,24 +322,16 @@ func TestGenerate_SingleContainerSingleOrigin(t *testing.T) {
 	assert.Equal(t, pcommon.Timestamp(0), prof.Duration())
 
 	t.Run("Check environment variable attribute", func(t *testing.T) {
-		foundFOOKey := false
-		foundBarValue := false
+		findAttribute(t, profiles, "FOO", "BAR")
+	})
 
-		for _, attr := range profiles.ProfilesDictionary().AttributeTable().All() {
-			key := attr.Key()
-			value := attr.Value()
-			// Check if this is an environment variable attribute
-			if key == "process.environment_variable.FOO" {
-				foundFOOKey = true
-				if value.Type() == pcommon.ValueTypeStr && value.Str() == "BAR" {
-					foundBarValue = true
-				}
-			}
-		}
-		assert.True(t, foundFOOKey,
-			"Attribute 'process.environment_variable.FOO' should be in the attribute table")
-		assert.True(t, foundBarValue,
-			"Environment variable value 'bar' should be in the attribute table")
+	t.Run("Check service.name attribute", func(t *testing.T) {
+		findAttribute(t, profiles, "service.name", "service-name")
+	})
+
+	t.Run("Check OTEL_RESOURCE_ATTRIBUTES attributes", func(t *testing.T) {
+		findAttribute(t, profiles, "attr1", "val1")
+		findAttribute(t, profiles, "attr2", "val2")
 	})
 }
 

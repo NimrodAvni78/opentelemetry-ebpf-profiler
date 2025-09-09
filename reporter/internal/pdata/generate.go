@@ -5,6 +5,7 @@ package pdata // import "go.opentelemetry.io/ebpf-profiler/reporter/internal/pda
 
 import (
 	"fmt"
+	"go.opentelemetry.io/ebpf-profiler/reporter/internal/pdata/attributes"
 	"math"
 	"path/filepath"
 	"time"
@@ -247,6 +248,22 @@ func (p *Pdata) setProfile(
 			semconv.ThreadIDKey, traceKey.Tid)
 
 		for key, value := range traceInfo.EnvVars {
+			if key == "OTEL_SERVICE_NAME" {
+				attrMgr.AppendOptionalString(
+					sample.AttributeIndices(),
+					attribute.Key("service.name"),
+					value)
+				continue
+			}
+			if key == "OTEL_RESOURCE_ATTRIBUTES" {
+				attributes.ParseOTELResourceVariable(value, func(k, v string) {
+					attrMgr.AppendOptionalString(
+						sample.AttributeIndices(),
+						attribute.Key(k),
+						v)
+				})
+				continue
+			}
 			attrMgr.AppendOptionalString(
 				sample.AttributeIndices(),
 				attribute.Key("process.environment_variable."+key),
